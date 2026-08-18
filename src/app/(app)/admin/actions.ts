@@ -31,10 +31,16 @@ function genPassword(): string {
   return out;
 }
 
+function validatePassword(password: string): string | null {
+  if (password.length < 8) return 'Geslo mora imeti vsaj 8 znakov.';
+  return null;
+}
+
 export async function createUser(input: {
   email: string;
   fullName: string;
   role: Role;
+  password?: string;
 }): Promise<ActionResult<{ tempPassword: string }>> {
   try {
     await requireAdmin();
@@ -44,8 +50,14 @@ export async function createUser(input: {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
       return { ok: false, error: 'Neveljaven e-poštni naslov.' };
 
+    const customPassword = input.password?.trim();
+    if (customPassword) {
+      const pwErr = validatePassword(customPassword);
+      if (pwErr) return { ok: false, error: pwErr };
+    }
+
     const admin = createAdminClient();
-    const tempPassword = genPassword();
+    const tempPassword = customPassword || genPassword();
     const { data: created, error } = await admin.auth.admin.createUser({
       email,
       password: tempPassword,
@@ -77,6 +89,20 @@ export async function updateUserRole(id: string, role: Role): Promise<ActionResu
     await requireAdmin();
     const admin = createAdminClient();
     const { error } = await admin.from('profiles').update({ role }).eq('id', id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Napaka.' };
+  }
+}
+
+export async function setUserPassword(id: string, password: string): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const pwErr = validatePassword(password);
+    if (pwErr) return { ok: false, error: pwErr };
+    const admin = createAdminClient();
+    const { error } = await admin.auth.admin.updateUserById(id, { password });
     if (error) return { ok: false, error: error.message };
     return { ok: true };
   } catch (e) {

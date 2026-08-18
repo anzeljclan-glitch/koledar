@@ -5,13 +5,16 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { type Profile, type Role, ROLE_LABEL } from '@/lib/types';
 import { avColor, initials } from '@/lib/ui';
-import { createUser, updateUserRole, deleteUser } from '@/app/(app)/admin/actions';
+import { createUser, updateUserRole, deleteUser, setUserPassword } from '@/app/(app)/admin/actions';
 
 export default function AdminApp({ currentUserId }: { currentUserId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const [users, setUsers] = useState<Profile[]>([]);
   const [adding, setAdding] = useState(false);
-  const [tempPass, setTempPass] = useState<{ email: string; pass: string } | null>(null);
+  const [pwUser, setPwUser] = useState<Profile | null>(null);
+  const [tempPass, setTempPass] = useState<{ email: string; pass: string; created: boolean } | null>(
+    null,
+  );
   const [toast, setToast] = useState<string | null>(null);
 
   const flash = useCallback((m: string) => {
@@ -61,7 +64,15 @@ export default function AdminApp({ currentUserId }: { currentUserId: string }) {
 
       {tempPass && (
         <div className="temp-pass">
-          Uporabnik <b>{tempPass.email}</b> je ustvarjen. Začasno geslo:{' '}
+          {tempPass.created ? (
+            <>
+              Uporabnik <b>{tempPass.email}</b> je ustvarjen. Začasno geslo:{' '}
+            </>
+          ) : (
+            <>
+              Geslo za <b>{tempPass.email}</b> je posodobljeno. Novo geslo:{' '}
+            </>
+          )}
           <code>{tempPass.pass}</code>
           <div style={{ marginTop: 6, fontSize: 13 }}>
             Posreduj mu geslo — priporočljivo je, da ga ob prvi prijavi zamenja.
@@ -111,6 +122,9 @@ export default function AdminApp({ currentUserId }: { currentUserId: string }) {
                 )}
               </td>
               <td style={{ textAlign: 'right' }}>
+                <button className="btn-ghost" onClick={() => setPwUser(u)}>
+                  Geslo
+                </button>{' '}
                 {u.id !== currentUserId && (
                   <button
                     className="btn-ghost"
@@ -131,8 +145,21 @@ export default function AdminApp({ currentUserId }: { currentUserId: string }) {
           onClose={() => setAdding(false)}
           onCreated={(email, pass) => {
             setAdding(false);
-            setTempPass({ email, pass });
+            setTempPass({ email, pass, created: true });
             load();
+          }}
+          onError={flash}
+        />
+      )}
+
+      {pwUser && (
+        <SetPasswordModal
+          user={pwUser}
+          onClose={() => setPwUser(null)}
+          onDone={(pass) => {
+            setPwUser(null);
+            setTempPass({ email: pwUser.email, pass, created: false });
+            flash('Geslo posodobljeno');
           }}
           onError={flash}
         />
@@ -155,12 +182,14 @@ function AddUserModal({
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('viewer');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submit() {
     if (!fullName.trim() || !email.trim()) return onError('Izpolni ime in e-pošto.');
+    if (password && password.length < 8) return onError('Geslo mora imeti vsaj 8 znakov.');
     setBusy(true);
-    const res = await createUser({ fullName, email, role });
+    const res = await createUser({ fullName, email, role, password: password || undefined });
     setBusy(false);
     if (!res.ok) return onError(res.error);
     onCreated(email.trim().toLowerCase(), res.tempPassword);
@@ -195,6 +224,15 @@ function AddUserModal({
             <option value="viewer">Gledalec — samo ogled</option>
           </select>
         </div>
+        <div className="field">
+          <label>Geslo (neobvezno)</label>
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="pusti prazno za samodejno generirano geslo"
+          />
+        </div>
         <div className="modal-actions">
           <div />
           <div className="right">
@@ -203,6 +241,62 @@ function AddUserModal({
             </button>
             <button className="btn-primary" onClick={submit} disabled={busy}>
               {busy ? 'Ustvarjam…' : 'Ustvari'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SetPasswordModal({
+  user,
+  onClose,
+  onDone,
+  onError,
+}: {
+  user: Profile;
+  onClose: () => void;
+  onDone: (password: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (password.length < 8) return onError('Geslo mora imeti vsaj 8 znakov.');
+    setBusy(true);
+    const res = await setUserPassword(user.id, password);
+    setBusy(false);
+    if (!res.ok) return onError(res.error);
+    onDone(password);
+  }
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Nastavi geslo</h2>
+        <p className="sub">
+          Novo geslo za uporabnika <b>{user.full_name || user.email}</b> ({user.email}).
+        </p>
+        <div className="field">
+          <label>Novo geslo</label>
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="vsaj 8 znakov"
+            autoFocus
+          />
+        </div>
+        <div className="modal-actions">
+          <div />
+          <div className="right">
+            <button className="btn-ghost" onClick={onClose}>
+              Prekliči
+            </button>
+            <button className="btn-primary" onClick={submit} disabled={busy}>
+              {busy ? 'Shranjujem…' : 'Shrani'}
             </button>
           </div>
         </div>
