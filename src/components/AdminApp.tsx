@@ -273,4 +273,34 @@ function SetPasswordModal({
   }
 
   return (
-    <div className="
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Nastavi geslo</h2>
+        <p className="sub">
+          Novo geslo za uporabnika <b>{user.full_name || user.email}</b> ({user.email}).
+        </p>
+        <div className="field">
+          <label>Novo geslo</label>
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="vsaj 8 znakov"
+            autoFocus
+          />
+        </div>
+        <div className="modal-actions">
+          <div />
+          <div className="right">
+            <button className="btn-ghost" onClick={onClose}>
+              Prekliči
+            </button>
+            <button className="btn-primary" onClick={submit} disabled={busy}>
+              {busy ? 'Shranjujem…' : 'Shrani'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
